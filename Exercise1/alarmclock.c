@@ -32,9 +32,8 @@ int main()
 
         scanf(" %c", &op);
 
-        execlp("mpg123", "/pling.mp3"); 
-
-        int status;
+        int status, sound_pid;
+        int *sp_ptr = &sound_pid;
         for (int i = 0; i < head; i++) 
         {
             waitpid(alarms[i].pid, &status,WNOHANG);
@@ -43,6 +42,7 @@ int main()
                 alarms[i].active = 0;
             }
         }
+        waitpid(sound_pid, NULL, WNOHANG);
         
 
         switch (op)
@@ -77,9 +77,14 @@ int main()
             else if (alarm.pid == 0)
             {
                 time(&ct);
-                printf(" %lu", alarm.alarm_time - ct);
                 sleep(alarm.alarm_time - ct);
-                printf("\nRING\n> ");
+                
+                *sp_ptr = fork();
+     
+                if (!sound_pid) {
+                    execlp("mpg123","mpg123", "-q", "pling.mp3", NULL);
+                    exit(0);
+                }
                 exit(0);
             }
             else
@@ -110,7 +115,7 @@ int main()
             if (alarm_no > 0 && alarm_no < head + 1)
             {
                 kill(alarms[alarm_no - 1].pid, SIGKILL);
-                alarms[alarm_no -1].active = 0;
+                alarms[alarm_no - 1].active = 0;
             }
             else
             {
