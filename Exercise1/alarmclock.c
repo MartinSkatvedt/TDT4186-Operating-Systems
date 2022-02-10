@@ -5,11 +5,13 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <signal.h>
+#include <sys/wait.h>
 
 struct Alarmclock
 {
     pid_t pid;
     time_t alarm_time;
+    int active;
 };
 
 int MAX_ALARMS = 60;
@@ -30,6 +32,19 @@ int main()
 
         scanf(" %c", &op);
 
+        execlp("mpg123", "/pling.mp3"); 
+
+        int status;
+        for (int i = 0; i < head; i++) 
+        {
+            waitpid(alarms[i].pid, &status,WNOHANG);
+            if (!status)
+            {
+                alarms[i].active = 0;
+            }
+        }
+        
+
         switch (op)
         {
         case 's':
@@ -48,7 +63,10 @@ int main()
             scanf(" %19c", time_str);
 
             strptime(time_str, "%Y-%m-%d %H:%M:%S", &time_tm);
+            time_tm.tm_isdst = -1;
+
             alarm.alarm_time = mktime(&time_tm);
+            alarm.active = 1;
             alarm.pid = fork();
 
             if (alarm.pid > 0)
@@ -58,7 +76,9 @@ int main()
             }
             else if (alarm.pid == 0)
             {
-                sleep(15);
+                time(&ct);
+                printf(" %lu", alarm.alarm_time - ct);
+                sleep(alarm.alarm_time - ct);
                 printf("\nRING\n> ");
                 exit(0);
             }
@@ -73,7 +93,10 @@ int main()
             printf("Listing all %d alarms\n", head);
             for (int i = 0; i < head; i++)
             {
-                printf("Alarm %d: %s", i + 1, ctime(&(alarms[i].alarm_time)));
+                if (alarms[i].active) 
+                {
+                    printf("Alarm %d: %s", i + 1, ctime(&(alarms[i].alarm_time)));
+                }
             }
             break;
         }
@@ -87,7 +110,7 @@ int main()
             if (alarm_no > 0 && alarm_no < head + 1)
             {
                 kill(alarms[alarm_no - 1].pid, SIGKILL);
-                head--;
+                alarms[alarm_no -1].active = 0;
             }
             else
             {
