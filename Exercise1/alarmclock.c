@@ -95,12 +95,13 @@ int main()
         }
         case 'l':
         {
-            printf("Listing all %d alarms\n", head);
+            int count = 0;
             for (int i = 0; i < head; i++)
             {
                 if (alarms[i].active) 
                 {
-                    printf("Alarm %d: %s", i + 1, ctime(&(alarms[i].alarm_time)));
+                    count++;
+                    printf("Alarm %d: %s", count, ctime(&(alarms[i].alarm_time)));
                 }
             }
             break;
