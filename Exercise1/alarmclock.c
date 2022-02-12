@@ -18,10 +18,10 @@ int MAX_ALARMS = 60;
 
 int main()
 {
-    struct Alarmclock alarms[MAX_ALARMS];
-    int head = 0;
-    char op;
-    time_t ct;
+    struct Alarmclock alarms[MAX_ALARMS]; // Alarm storage
+    int head = 0;   // Index for the array
+    char op;    // Stores users requested operation for each loop
+    time_t ct;  // Current time
 
     time(&ct);
     printf("Welcome to the alarm clock! It is currently %s", ctime(&ct));
@@ -31,20 +31,18 @@ int main()
         printf("Please enter \"s\" (schedule), \"l\" (list), \"c\" (cancel), \"x\" (exit)\n> ");
 
         scanf(" %c", &op);
-
-        int status, sound_pid;
-        int *sp_ptr = &sound_pid;
+        
+        // Remove inactive alarms (zombies)
+        int status;
         for (int i = 0; i < head; i++) 
         {
-            waitpid(alarms[i].pid, &status,WNOHANG);
+            waitpid(alarms[i].pid, &status, WNOHANG);
             if (!status)
             {
                 alarms[i].active = 0;
             }
         }
-        waitpid(sound_pid, NULL, WNOHANG);
         
-
         switch (op)
         {
         case 's':
@@ -56,11 +54,11 @@ int main()
             }
 
             struct Alarmclock alarm;
-            char time_str[20];
+            char time_str[19];
             struct tm time_tm;
 
             printf("Schedule alarm at which date and time?\n> ");
-            scanf(" %19c", time_str);
+            scanf(" %18c", time_str);
 
             strptime(time_str, "%Y-%m-%d %H:%M:%S", &time_tm);
             time_tm.tm_isdst = -1;
@@ -76,14 +74,17 @@ int main()
             }
             else if (alarm.pid == 0)
             {
+                int sound_pid, sound_status;
+
                 time(&ct);
                 sleep(alarm.alarm_time - ct);
-                
-                *sp_ptr = fork();
-     
-                if (!sound_pid) {
+                if (sound_pid > 0) {
+                    waitpid(sound_pid, &sound_status, 0);
+                } else if (sound_pid == 0) {
                     execlp("mpg123","mpg123", "-q", "pling.mp3", NULL);
                     exit(0);
+                } else {
+                    printf("Fork failed!");
                 }
                 exit(0);
             }
