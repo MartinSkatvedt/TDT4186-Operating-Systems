@@ -57,10 +57,10 @@ int main()
             char time_str[19];
             struct tm time_tm;
 
-            printf("Schedule alarm at which date and time?\n> ");
+            printf("Schedule alarm at which date and time? (YYYY-MM-DD hh-mm-ss)\n> ");
             scanf(" %18c", time_str);
 
-            strptime(time_str, "%Y-%m-%d %H:%M:%S", &time_tm);
+            strptime(time_str, "%Y-%m-%d%t%T", &time_tm);
             time_tm.tm_isdst = -1;
 
             alarm.alarm_time = mktime(&time_tm);
@@ -78,8 +78,11 @@ int main()
 
                 time(&ct);
                 sleep(alarm.alarm_time - ct);
+                
+                // Play sound
+                sound_pid = fork();
                 if (sound_pid > 0) {
-                    waitpid(sound_pid, &sound_status, 0);
+                    waitpid(sound_pid, &sound_status, 0);   // Block until done
                 } else if (sound_pid == 0) {
                     execlp("mpg123","mpg123", "-q", "pling.mp3", NULL);
                     exit(0);
@@ -96,13 +99,12 @@ int main()
         }
         case 'l':
         {
-            int count = 0;
             for (int i = 0; i < head; i++)
             {
                 if (alarms[i].active) 
                 {
                     count++;
-                    printf("Alarm %d: %s", count, ctime(&(alarms[i].alarm_time)));
+                    printf("Alarm %d: %s", i + 1, ctime(&(alarms[i].alarm_time)));
                 }
             }
             break;
