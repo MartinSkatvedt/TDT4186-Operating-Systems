@@ -103,7 +103,6 @@ int main()
             {
                 if (alarms[i].active) 
                 {
-                    count++;
                     printf("Alarm %d: %s", i + 1, ctime(&(alarms[i].alarm_time)));
                 }
             }
