@@ -72,8 +72,7 @@ int main()
             if (alarms[i].active)
             {
                 waitpid(alarms[i].pid, &status, WNOHANG); // Gets rid of zombies
-                printf("Alarm %d status: WIFEXTIED %d. WIFSIGNALED %d\n", i + 1, WIFEXITED(status), WIFSIGNALED(status));
-                if (WIFEXITED(status) || WIFSIGNALED(status))
+                if (!status)
                 {
                     alarms[i].active = 0; // Marks the alarm as inactive
                 }
