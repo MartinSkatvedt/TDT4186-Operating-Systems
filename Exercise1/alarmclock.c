@@ -95,7 +95,7 @@ int main()
             struct tm time_tm;       // User input parsed to tm type
 
             printf("Schedule alarm at which date and time? (YYYY-MM-DD hh-mm-ss)\n> ");
-            scanf(" %18c", time_str); // Get user input
+            scanf(" %19c", time_str); // Get user input
 
             strptime(time_str, "%Y-%m-%d%t%T", &time_tm); // Converts string to tm type
             time_tm.tm_isdst = 0;                         // Ignore daylight saving time
