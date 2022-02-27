@@ -22,6 +22,7 @@ void ring()
 {
     // Executes mpg123 then terminates
     execlp("mpg123", "mpg123", "-q", "pling.mp3", NULL);
+    printf("RING\n");
     exit(0);
 }
 
@@ -94,7 +95,7 @@ int main()
             char time_str[19];       // User input variable
             struct tm time_tm;       // User input parsed to tm type
 
-            printf("Schedule alarm at which date and time? (YYYY-MM-DD hh-mm-ss)\n> ");
+            printf("Schedule alarm at which date and time? (YYYY-MM-DD hh:mm:ss)\n> ");
             scanf(" %19c", time_str); // Get user input
 
             strptime(time_str, "%Y-%m-%d%t%T", &time_tm); // Converts string to tm type
