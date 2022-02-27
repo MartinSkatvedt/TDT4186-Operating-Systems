@@ -67,14 +67,12 @@ int main()
         scanf(" %c", &op); // Get operation to perform from user
 
         // Remove inactive alarms (zombies)
-        int status;
         for (int i = 0; i < head; i++)
         {
             if (alarms[i].active)
             {
-                waitpid(alarms[i].pid, &status, WNOHANG); // Gets rid of zombies
-                if (!status)
-                {
+                if (waitpid(alarms[i].pid, NULL, WNOHANG) > 0)
+                {                         // Gets rid of zombies
                     alarms[i].active = 0; // Marks the alarm as inactive
                 }
             }
