@@ -50,7 +50,6 @@ int prepare_response(char *wwwpath, char *req, char **res, size_t *res_size)
     if ((read_file(full_path, res, res_size)) < 0)
     {
         sprintf(full_path, "%s%s", wwwpath, FILE_404);
-        printf("Full path: %s\n", full_path);
         if ((read_file(full_path, res, res_size)) < 0)
         {
             perror("Cannot read 404 file");
