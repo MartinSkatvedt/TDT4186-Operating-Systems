@@ -1,28 +1,62 @@
 #include <netinet/in.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
 
-char *read_file(char *path)
+#define FILE_404 "404.html"
+
+int read_file(char *path, char **buffer, size_t *buffer_size)
 {
     FILE *file;
+    struct stat file_stat;
+
+    if ((file = fopen(path, "r")) == NULL)
+    {
+        perror("Unable to open file");
+        return -1;
+    }
+
+    if (fstat(fileno(file), &file_stat) != 0)
+    {
+        perror("Unable to get info of file");
+        fclose(file);
+        return -1;
+    }
+
+    *buffer_size = file_stat.st_size;
+    *buffer = malloc(sizeof(char) * (file_stat.st_size + 1));
+
+    if (fread(*buffer, sizeof(char), file_stat.st_size, file) == 0)
+    {
+        perror("Unable to read file");
+        fclose(file);
+        return -1;
+    }
+
+    fclose(file);
+    return 0;
 }
 
-int handle_request(char *wwwpath, char *req, char **res)
+int prepare_response(char *wwwpath, char *req, char **res, size_t *res_size)
 {
     strtok(req, " ");
     char *file_path = strtok(NULL, " ");
     char *full_path = strncat(wwwpath, file_path, 64);
-    if (!access(full_path, F_OK))
+
+    if ((read_file(full_path, res, res_size)) < 0)
     {
-        perror("404 not found");
-        exit(1);
+        full_path = strncat(wwwpath, FILE_404, 64);
+        if ((read_file(full_path, res, res_size)) < 0)
+        {
+            perror("Cannot read 404 file");
+            return -1;
+        }
     }
-    *res = read_file(full_path);
-    return 1;
+    return 0;
 }
 
 int main(int argc, char *argv[])
@@ -39,8 +73,8 @@ int main(int argc, char *argv[])
     // printf("wwwpath: %s\nport: %d\n#threads: %d\n#bufferslots: %d\n\n", wwwpath, port, threads, bufferslots);
 
     int sock, new_sock;
-    socklen_t socklen;
     struct sockaddr_in addr;
+    socklen_t socklen;
 
     if ((sock = socket(AF_INET, SOCK_STREAM, 0)) <= 0)
     {
@@ -62,49 +96,57 @@ int main(int argc, char *argv[])
 
     while (1)
     {
-        size_t buffer_size = 1024;
-        char *buffer = malloc(buffer_size);
-        char *res = malloc(sizeof(char) * 10000);
+        int req_buffer_size = 1024;
+        char *req_buffer;
+
+        size_t res_buffer_size;
+        char *res_buffer;
+
         if (listen(sock, 10) < 0)
         {
-            perror("server: listen");
+            perror("Unable to listen for connections");
             exit(1);
         }
         printf("Listening for connections...\n");
 
         if ((new_sock = accept(sock, (struct sockaddr *)&addr, &socklen)) < 0)
         {
-            perror("server: accept");
-            exit(1);
+            perror("Unable to accept connection");
+            continue;
         }
         printf("Accepted connection\n");
 
-        if (recv(new_sock, buffer, buffer_size, 0) < 0)
+        req_buffer = malloc(req_buffer_size);
+
+        if (recv(new_sock, req_buffer, req_buffer_size, 0) < 0)
         {
-            perror("server: recv");
-            exit(1);
+            perror("Unable to recieve request");
+            close(new_sock);
+            continue;
         }
         printf("Recieved request\n");
 
-        if (handle_request(wwwpath, buffer, &res) < 0)
+        if (prepare_response(wwwpath, req_buffer, &res_buffer, &res_buffer_size) < 0)
         {
-            perror("server: handle");
-            exit(1);
+            perror("Unable to prepare response");
+            close(new_sock);
+            continue;
         }
-        free(buffer);
-        printf("Handled request\n");
+        free(req_buffer);
+        printf("Prepared response\n");
 
-        if (write(new_sock, res, strlen(res)) < 0)
+        if (write(new_sock, res_buffer, strlen(res_buffer)) < 0)
         {
-            perror("server: write");
-            exit(1);
+            perror("Unable to write response back");
+            close(new_sock);
+            continue;
         }
-        free(res);
+        free(res_buffer);
         printf("Wrote response back\n");
 
         if (close(new_sock) < 0)
         {
-            perror("server: close");
+            perror("Unable to close connection");
             exit(1);
         }
         printf("Closed connection\n");
