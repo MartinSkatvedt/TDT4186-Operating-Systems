@@ -7,7 +7,7 @@
 #include <unistd.h>
 #include <string.h>
 
-#define FILE_404 "404.html"
+#define FILE_404 "/404.html"
 
 int read_file(char *path, char **buffer, size_t *buffer_size)
 {
@@ -28,7 +28,7 @@ int read_file(char *path, char **buffer, size_t *buffer_size)
     }
 
     *buffer_size = file_stat.st_size;
-    *buffer = malloc(sizeof(char) * (file_stat.st_size + 1));
+    *buffer = malloc(sizeof(char) * (file_stat.st_size));
 
     if (fread(*buffer, sizeof(char), file_stat.st_size, file) == 0)
     {
@@ -45,17 +45,19 @@ int prepare_response(char *wwwpath, char *req, char **res, size_t *res_size)
 {
     strtok(req, " ");
     char *file_path = strtok(NULL, " ");
-    char *full_path = strncat(wwwpath, file_path, 64);
-
+    char *full_path = malloc(strlen(wwwpath) + strlen(file_path) + 1);
+    sprintf(full_path, "%s%s", wwwpath, file_path);
     if ((read_file(full_path, res, res_size)) < 0)
     {
-        full_path = strncat(wwwpath, FILE_404, 64);
+        sprintf(full_path, "%s%s", wwwpath, FILE_404);
+        printf("Full path: %s\n", full_path);
         if ((read_file(full_path, res, res_size)) < 0)
         {
             perror("Cannot read 404 file");
             return -1;
         }
     }
+    free(full_path);
     return 0;
 }
 
