@@ -6,8 +6,16 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include "bbuffer.h"
+#include <pthread.h>
 
 #define FILE_404 "/404.html"
+
+struct BNDBUF *bbuffer;
+// Have to increase the buffer size in order to handle HTTP/1.1 requests
+int req_buffer_size = 5000;
+size_t res_buffer_size;
+char *wwwpath;
 
 int read_file(char *path, char **buffer, size_t *buffer_size)
 {
@@ -60,6 +68,52 @@ int prepare_response(char *wwwpath, char *req, char **res, size_t *res_size)
     return 0;
 }
 
+void *request_handler() {
+    printf("New thread\n");
+    
+    char *req_buffer = malloc(req_buffer_size);
+    char *res_buffer;
+
+    while (1) 
+    {
+    int thread_socket = bb_get(bbuffer);
+    
+    if (recv(thread_socket, req_buffer, req_buffer_size, 0) < 0)
+        {
+            perror("Unable to recieve request");
+            close(thread_socket);
+            continue;
+        }
+        printf("Recieved request\n");
+
+          if (prepare_response(wwwpath, req_buffer, &res_buffer, &res_buffer_size) < 0)
+        {
+            perror("Unable to prepare response");
+            close(thread_socket);
+            continue;
+        }
+        free(req_buffer);
+        printf("Prepared response\n");
+
+        if (write(thread_socket, res_buffer, strlen(res_buffer)) < 0)
+        {
+            perror("Unable to write response back");
+            close(thread_socket);
+            continue;
+        }
+        free(res_buffer);
+
+        printf("Wrote response back\n");
+
+        if (close(thread_socket) < 0)
+        {
+            perror("Unable to close connection");
+            exit(1);
+        }
+        printf("Closed connection\n");
+    }
+}
+
 int main(int argc, char *argv[])
 {
     if (argc != 5)
@@ -67,12 +121,27 @@ int main(int argc, char *argv[])
         printf("Incorrect argument amount.\n Usage: mtwwwd www-path port #threads #bufferslots\n");
         return 1;
     }
-    char *wwwpath = argv[1];
+    wwwpath = argv[1];
     int port = atoi(argv[2]);
-    int threads = atoi(argv[3]);
+    int n_threads = atoi(argv[3]);
     int bufferslots = atoi(argv[4]);
     // printf("wwwpath: %s\nport: %d\n#threads: %d\n#bufferslots: %d\n\n", wwwpath, port, threads, bufferslots);
+    
+    bbuffer = bb_init(bufferslots);
+    if (bbuffer == NULL) {
+        printf("Could not create buffer");
+    }
 
+    pthread_t threads[n_threads];
+    int thread_args[n_threads];
+
+    for(int i = 0; i<n_threads;i++) {
+        thread_args[i] = i;
+        int res = pthread_create(&threads[i], NULL, &request_handler, &thread_args[i]);
+    }
+
+
+    //sprintf(" %d", bbuffer->size);
     int sock, new_sock;
     struct sockaddr_in addr;
     socklen_t socklen;
@@ -95,17 +164,14 @@ int main(int argc, char *argv[])
     }
     printf("Socket has been bound\n");
 
+
     while (1)
     {
-        int req_buffer_size = 1024;
-        char *req_buffer;
-
-        size_t res_buffer_size;
-        char *res_buffer;
 
         if (listen(sock, 10) < 0)
         {
             perror("Unable to listen for connections");
+            close(sock);
             exit(1);
         }
         printf("Listening for connections...\n");
@@ -116,41 +182,7 @@ int main(int argc, char *argv[])
             continue;
         }
         printf("Accepted connection\n");
-
-        req_buffer = malloc(req_buffer_size);
-
-        if (recv(new_sock, req_buffer, req_buffer_size, 0) < 0)
-        {
-            perror("Unable to recieve request");
-            close(new_sock);
-            continue;
-        }
-        printf("Recieved request\n");
-
-        if (prepare_response(wwwpath, req_buffer, &res_buffer, &res_buffer_size) < 0)
-        {
-            perror("Unable to prepare response");
-            close(new_sock);
-            continue;
-        }
-        free(req_buffer);
-        printf("Prepared response\n");
-
-        if (write(new_sock, res_buffer, strlen(res_buffer)) < 0)
-        {
-            perror("Unable to write response back");
-            close(new_sock);
-            continue;
-        }
-        free(res_buffer);
-        printf("Wrote response back\n");
-
-        if (close(new_sock) < 0)
-        {
-            perror("Unable to close connection");
-            exit(1);
-        }
-        printf("Closed connection\n");
+        bb_add(bbuffer, new_sock);  
     }
     close(sock);
     return 0;

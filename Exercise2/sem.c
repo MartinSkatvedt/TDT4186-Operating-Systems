@@ -46,12 +46,12 @@ int sem_del(SEM *sem)
 
     int error = 0;
 
-    if (pthread_mutex_destroy(&(sem->mutex)) != NULL)
+    if (pthread_mutex_destroy(&(sem->mutex)) != 0)
     {
         error = -1;
     }
 
-    if (pthread_cond_destroy(&(sem->mutex)) != NULL)
+    if (pthread_cond_destroy(&(sem->condition)) != 0)
     {
         error = -1;
     }
