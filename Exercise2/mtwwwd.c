@@ -12,32 +12,32 @@
 #define FILE_404 "/404.html"
 
 struct BNDBUF *bbuffer;
-// Have to increase the buffer size in order to handle HTTP/1.1 requests
-int req_buffer_size = 5000;
-size_t res_buffer_size;
+int req_buffer_size = 1000;
 char *wwwpath;
 
-int read_file(char *path, char **buffer, size_t *buffer_size)
+// Reads a file into a buffer
+int read_file(char *path, char **buffer)
 {
     FILE *file;
     struct stat file_stat;
 
+    // Open the file for reading
     if ((file = fopen(path, "r")) == NULL)
     {
         perror("Unable to open file");
         return -1;
     }
 
+    // Get size of file and allocate buffer memory
     if (fstat(fileno(file), &file_stat) != 0)
     {
         perror("Unable to get info of file");
         fclose(file);
         return -1;
     }
-
-    *buffer_size = file_stat.st_size;
     *buffer = malloc(sizeof(char) * (file_stat.st_size));
 
+    // Read entire file into buffer
     if (fread(*buffer, sizeof(char), file_stat.st_size, file) == 0)
     {
         perror("Unable to read file");
@@ -45,20 +45,25 @@ int read_file(char *path, char **buffer, size_t *buffer_size)
         return -1;
     }
 
+    // Close the file
     fclose(file);
     return 0;
 }
 
-int prepare_response(char *wwwpath, char *req, char **res, size_t *res_size)
+// Fills the response buffer with the appropriate file
+int prepare_response(char *wwwpath, char *req, char **res)
 {
+    // Get file path
     strtok(req, " ");
     char *file_path = strtok(NULL, " ");
     char *full_path = malloc(strlen(wwwpath) + strlen(file_path) + 1);
     sprintf(full_path, "%s%s", wwwpath, file_path);
-    if ((read_file(full_path, res, res_size)) < 0)
+
+    // Read file or 404 file
+    if ((read_file(full_path, res)) < 0)
     {
         sprintf(full_path, "%s%s", wwwpath, FILE_404);
-        if ((read_file(full_path, res, res_size)) < 0)
+        if ((read_file(full_path, res)) < 0)
         {
             perror("Cannot read 404 file");
             return -1;
@@ -68,17 +73,18 @@ int prepare_response(char *wwwpath, char *req, char **res, size_t *res_size)
     return 0;
 }
 
-void *request_handler() {
+void *request_handler()
+{
     printf("New thread\n");
-    
+
     char *req_buffer = malloc(req_buffer_size);
     char *res_buffer;
 
-    while (1) 
+    while (1)
     {
-    int thread_socket = bb_get(bbuffer);
-    
-    if (recv(thread_socket, req_buffer, req_buffer_size, 0) < 0)
+        int thread_socket = bb_get(bbuffer);
+
+        if (recv(thread_socket, req_buffer, req_buffer_size, 0) < 0)
         {
             perror("Unable to recieve request");
             close(thread_socket);
@@ -86,7 +92,7 @@ void *request_handler() {
         }
         printf("Recieved request\n");
 
-          if (prepare_response(wwwpath, req_buffer, &res_buffer, &res_buffer_size) < 0)
+        if (prepare_response(wwwpath, req_buffer, &res_buffer) < 0)
         {
             perror("Unable to prepare response");
             close(thread_socket);
@@ -126,22 +132,23 @@ int main(int argc, char *argv[])
     int n_threads = atoi(argv[3]);
     int bufferslots = atoi(argv[4]);
     // printf("wwwpath: %s\nport: %d\n#threads: %d\n#bufferslots: %d\n\n", wwwpath, port, threads, bufferslots);
-    
+
     bbuffer = bb_init(bufferslots);
-    if (bbuffer == NULL) {
+    if (bbuffer == NULL)
+    {
         printf("Could not create buffer");
     }
 
     pthread_t threads[n_threads];
     int thread_args[n_threads];
 
-    for(int i = 0; i<n_threads;i++) {
+    for (int i = 0; i < n_threads; i++)
+    {
         thread_args[i] = i;
         int res = pthread_create(&threads[i], NULL, &request_handler, &thread_args[i]);
     }
 
-
-    //sprintf(" %d", bbuffer->size);
+    // sprintf(" %d", bbuffer->size);
     int sock, new_sock;
     struct sockaddr_in addr;
     socklen_t socklen;
@@ -164,7 +171,6 @@ int main(int argc, char *argv[])
     }
     printf("Socket has been bound\n");
 
-
     while (1)
     {
 
@@ -182,7 +188,7 @@ int main(int argc, char *argv[])
             continue;
         }
         printf("Accepted connection\n");
-        bb_add(bbuffer, new_sock);  
+        bb_add(bbuffer, new_sock);
     }
     close(sock);
     return 0;
