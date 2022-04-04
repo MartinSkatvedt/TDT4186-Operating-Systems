@@ -16,7 +16,8 @@ char **parse_command(char *inp_command)
     {
         parsed_input[input_index] = pch;
         input_index++;
-        pch = strtok(NULL, " ,.-");
+        printf(" %s \n", pch);
+        pch = strtok(NULL, " ");
     }
 
     parsed_input[input_index] = NULL; // Last index is NULL
@@ -51,6 +52,8 @@ int main(int argc, char *argv[])
     {
         print_work_dir();
         input_bytes = getline(&input_str, &input_size, stdin);
+        input_str[strcspn(input_str, "\r\n")] = 0;
+
         char **parsed_input = parse_command(input_str);
 
         pid_t pid = fork();
@@ -58,12 +61,12 @@ int main(int argc, char *argv[])
         if (pid == 0)
         {
             int ret_status = execvp(parsed_input[0], parsed_input);
-            _exit(ret_status);
+            exit(ret_status);
         }
         else if (pid > 0)
         {
             int child_return = waitpid(pid, &child_status, 0);
-            printf("Exit status [%s] = %d\n", input_str, child_return);
+            printf("Exit status [%s] = %d\n", input_str, child_status);
         }
         else
         {
