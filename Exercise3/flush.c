@@ -59,6 +59,54 @@ int get_IO_index(char **inp_arr, int *inp_size)
     return -1;
 }
 
+void insert_bg_job(bg_job *current_job, pid_t pid, char *command)
+{
+    bg_job *new_job = malloc(sizeof(struct bg_job));
+
+    new_job->pid = pid;
+    new_job->command = command;
+    new_job->next_job = NULL;
+
+    if (current_job == NULL)
+    {
+        new_job->prev_job = NULL;
+    }
+    else
+    {
+        current_job->next_job = new_job;
+        new_job->prev_job = current_job;
+    }
+
+    current_job = malloc(sizeof(struct bg_job));
+    memcpy(current_job, new_job, sizeof(struct bg_job));
+    free(new_job);
+}
+
+void delete_bg_job(bg_job *current_job, bg_job *delete_job)
+{
+    if (current_job == NULL || delete_job == NULL)
+    {
+        return;
+    }
+
+    if (delete_job == current_job) // if head == del, set head to previous
+    {
+        current_job = delete_job->prev_job;
+    }
+
+    if (delete_job->next_job != NULL) // if it is not first job
+    {
+        delete_job->next_job->prev_job = delete_job->prev_job;
+    }
+
+    if (delete_job->prev_job != NULL) // if it is not last job
+    {
+        delete_job->prev_job->next_job = delete_job->next_job;
+    }
+
+    free(delete_job);
+}
+
 int main(int argc, char *argv[])
 {
     printf("Welcome to flush \n");
@@ -78,29 +126,17 @@ int main(int argc, char *argv[])
         {
             int ret_status;
             int child_return = waitpid(temp_prev_job->pid, &ret_status, WNOHANG);
+            bg_job *temp = malloc(sizeof(struct bg_job));
+            temp = temp_prev_job->prev_job;
+
             if (WIFEXITED(ret_status))
             {
                 printf("Exit status [%s] = %d\n", temp_prev_job->command, ret_status);
-                if (temp_prev_job->next_job == NULL && temp_prev_job->prev_job != NULL)
-                {
-                    temp_prev_job->prev_job->next_job = NULL;
-                }
-                else if (temp_prev_job->prev_job == NULL && temp_prev_job->next_job != NULL)
-                {
-                    temp_prev_job->next_job->prev_job = NULL;
-                }
-                else if (temp_prev_job->next_job != NULL && temp_prev_job->prev_job != NULL)
-                {
-                    temp_prev_job->prev_job->next_job = temp_prev_job->next_job;
-                    temp_prev_job->next_job->prev_job = temp_prev_job->prev_job;
-                }
 
-                if (temp_prev_job == current_job)
-                {
-                    current_job = current_job->prev_job;
-                }
+                delete_bg_job(current_job, temp_prev_job);
             }
-            temp_prev_job = temp_prev_job->prev_job;
+            temp_prev_job = temp;
+            free(temp);
         }
 
         print_work_dir();
@@ -158,28 +194,9 @@ int main(int argc, char *argv[])
         }
         else if (pid > 0)
         {
-            const char chr = '&';
-            if (strchr(parsed_input[inp_size - 1], chr) != NULL)
+            if (strchr(parsed_input[inp_size - 1], '&') != NULL)
             {
-
-                bg_job *temp_job = malloc(sizeof(struct bg_job));
-                if (current_job != NULL)
-                {
-                    current_job->next_job = temp_job;
-                    temp_job->prev_job = current_job;
-                }
-                else
-                {
-                    temp_job->prev_job = NULL;
-                }
-
-                temp_job->pid = pid;
-                temp_job->command = malloc(4096);
-                strcpy(temp_job->command, parsed_input[0]);
-
-                current_job = malloc(sizeof(struct bg_job));
-                memcpy(current_job, temp_job, sizeof(struct bg_job));
-                free(temp_job);
+                insert_bg_job(current_job, pid, parsed_input[-1]);
             }
             else
             {
