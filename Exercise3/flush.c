@@ -97,15 +97,17 @@ void delete_bg_job(bg_job **head, bg_job *delete_job) // Deletes job from linked
 
 void display_current_jobs(bg_job *head) // Displays all jobs
 {
-    bg_job *temp_job = head;
-
     printf("Printing jobs... \n");
-    while (temp_job != NULL)
+    while (head != NULL)
     {
-        printf("[%d]: %s \n", temp_job->pid, temp_job->command);
-        temp_job = temp_job->next_job;
+        printf("[%d]: %s \n", head->pid, head->command);
+        head = head->next_job;
     }
-    printf("\n");
+    
+    if (head == NULL)
+    {
+        printf("NULL \n");
+    }
 }
 
 int main(int argc, char *argv[])
@@ -116,6 +118,7 @@ int main(int argc, char *argv[])
     size_t input_size = 2048;
     char *input_str = (char *)malloc(input_size);
     int inp_size = 0;
+    int is_bg_task = 0; // Bool if command ends with &
 
     int child_status;
     bg_job *head = NULL;
@@ -139,7 +142,10 @@ int main(int argc, char *argv[])
 
         print_work_dir();
         input_bytes = getline(&input_str, &input_size, stdin);
-        input_str[strcspn(input_str, "\r\n")] = 0;
+        
+        int inp_length = strlen(input_str); // Length of input
+        is_bg_task = (input_str[inp_length - 2] == '&') ? 1 : 0; // Checks if command ends with &
+        input_str[strcspn(input_str, "&\r\n")] = 0; // Removed newline and &
 
         char **parsed_input = parse_command(input_str, &inp_size);
         if (parsed_input[0] == NULL)
@@ -183,17 +189,12 @@ int main(int argc, char *argv[])
 
         if (pid == 0)
         {
-            if (strchr(parsed_input[inp_size - 1], '&') != NULL)
-            {
-                parsed_input[inp_size - 1] = NULL;
-            }
-
             int ret_status = execvp(parsed_input[0], parsed_input);
             exit(ret_status);
         }
         else if (pid > 0)
         {
-            if (strchr(parsed_input[inp_size - 1], '&') != NULL)
+            if (is_bg_task)
             {
                 insert_bg_job(&head, pid, parsed_input[0]);
             }
