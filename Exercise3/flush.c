@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <signal.h>
@@ -8,12 +10,59 @@
 
 typedef struct bg_job // Struct for background jobs
 {
-    pid_t pid; // PID of background job
-    char *command; // Command of background job
+    pid_t pid;               // PID of background job
+    char *command;           // Command of background job
     struct bg_job *next_job; // Next job
     struct bg_job *prev_job; // Previous job
 } bg_job;
 
+int detect_input_redirect(char **args, char **input_file_name)
+{
+    int i;
+    for (i = 0; args[i] != NULL; i++)
+    {
+        if (args[i][0] == '<')
+        {
+            if (args[i + 1] == NULL)
+            {
+                return -1;
+            }
+            *input_file_name = args[i + 1];
+
+            while (args[i - 1] != NULL)
+            {
+                args[i] = args[i + 2];
+                i++;
+            }
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int detect_output_redirect(char **args, char **output_file_name)
+{
+    int i;
+    for (i = 0; args[i] != NULL; i++)
+    {
+        if (args[i][0] == '>')
+        {
+            if (args[i + 1] == NULL)
+            {
+                return -1;
+            }
+            *output_file_name = args[i + 1];
+
+            while (args[i - 1] != NULL)
+            {
+                args[i] = args[i + 2];
+                i++;
+            }
+            return 1;
+        }
+    }
+    return 0;
+}
 char **parse_command(char *inp_command, int *inp_size) // Splits input into array
 {
     char **parsed_input = malloc(strlen(inp_command)); // array of parsed input
@@ -47,26 +96,14 @@ int print_work_dir() // Prints workdir
     return 0;
 }
 
-int get_IO_index(char **inp_arr, int *inp_size)
-{
-    for (int i = 0; i < *inp_size; i++)
-    {
-        if (strcmp(inp_arr[i], "<") == 0 || strcmp(inp_arr[i], ">") == 0)
-        {
-            return i;
-        }
-    }
-    return -1;
-}
-
 void insert_bg_job(bg_job **head, pid_t pid, char *command) // Insert new job as head
 {
     bg_job *new_job = malloc(sizeof(struct bg_job)); // Allocate memory for new node
-    new_job->pid = pid; // Set PID of child
-    new_job->command = command; // Set the command
-   
+    new_job->pid = pid;                              // Set PID of child
+    new_job->command = command;                      // Set the command
+
     new_job->next_job = (*head); // Set next as NULL or head
-    new_job->prev_job = NULL; // Set prev to NULL
+    new_job->prev_job = NULL;    // Set prev to NULL
 
     if ((*head) != NULL) // If list is not empy, set the heads previous as new node
     {
@@ -77,22 +114,22 @@ void insert_bg_job(bg_job **head, pid_t pid, char *command) // Insert new job as
 
 void delete_bg_job(bg_job **head, bg_job *delete_job) // Deletes job from linked list
 {
-  if ((*head) == NULL || delete_job == NULL)
-  {
-      return; // Return if both are NULL
-  } 
+    if ((*head) == NULL || delete_job == NULL)
+    {
+        return; // Return if both are NULL
+    }
 
-  if ((*head) == delete_job) // if the head is the node to be deleted
-  {
-      (*head) = delete_job->next_job;
-  }
+    if ((*head) == delete_job) // if the head is the node to be deleted
+    {
+        (*head) = delete_job->next_job;
+    }
 
-  if (delete_job->prev_job != NULL) //if the node is in the middle
-  {
-      delete_job->prev_job->next_job = delete_job->next_job;
-  }
+    if (delete_job->prev_job != NULL) // if the node is in the middle
+    {
+        delete_job->prev_job->next_job = delete_job->next_job;
+    }
 
-  free(delete_job);
+    free(delete_job);
 }
 
 void display_current_jobs(bg_job *head) // Displays all jobs
@@ -103,7 +140,7 @@ void display_current_jobs(bg_job *head) // Displays all jobs
         printf("[%d]: %s \n", head->pid, head->command);
         head = head->next_job;
     }
-    
+
     if (head == NULL)
     {
         printf("NULL \n");
@@ -119,6 +156,12 @@ int main(int argc, char *argv[])
     char *input_str = (char *)malloc(input_size);
     int inp_size = 0;
     int is_bg_task = 0; // Bool if command ends with &
+
+    // For redirection
+    int redir_in = 0;
+    int redir_out = 0;
+    char *redir_in_file;
+    char *redir_out_file;
 
     int child_status;
     bg_job *head = NULL;
@@ -142,10 +185,10 @@ int main(int argc, char *argv[])
 
         print_work_dir();
         input_bytes = getline(&input_str, &input_size, stdin);
-        
-        int inp_length = strlen(input_str); // Length of input
+
+        int inp_length = strlen(input_str);                      // Length of input
         is_bg_task = (input_str[inp_length - 2] == '&') ? 1 : 0; // Checks if command ends with &
-        input_str[strcspn(input_str, "&\r\n")] = 0; // Removed newline and &
+        input_str[strcspn(input_str, "&\r\n")] = 0;              // Removed newline and &
 
         char **parsed_input = parse_command(input_str, &inp_size);
         if (parsed_input[0] == NULL)
@@ -178,17 +221,30 @@ int main(int argc, char *argv[])
             continue;
         }
 
-        int IO_index = get_IO_index(parsed_input, &inp_size); // check for IO redirect
-        if (IO_index >= 0)
+        if ((redir_in = detect_input_redirect(parsed_input, &redir_in_file)) == -1)
         {
-            printf("Found redirect\n");
+            printf("Redirect: missing input file\n");
+            continue;
+        }
+
+        if ((redir_out = detect_output_redirect(parsed_input, &redir_out_file)) == -1)
+        {
+            printf("Redirect: missing output file\n");
+            continue;
         }
 
         pid_t pid = fork();
-
-
         if (pid == 0)
         {
+            if (redir_in)
+            {
+                freopen(redir_in_file, "r", stdin);
+            }
+
+            if (redir_out)
+            {
+                freopen(redir_out_file, "w+", stdout);
+            }
             int ret_status = execvp(parsed_input[0], parsed_input);
             exit(ret_status);
         }
@@ -202,7 +258,7 @@ int main(int argc, char *argv[])
             {
                 int child_return = waitpid(pid, &child_status, 0);
                 printf("Exit status [%s] = %d\n", input_str, child_status);
-            } 
+            }
             free(parsed_input);
         }
         else
