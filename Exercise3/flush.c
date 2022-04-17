@@ -6,15 +6,15 @@
 #include <sys/wait.h>
 #include <string.h>
 
-typedef struct bg_job
+typedef struct bg_job // Struct for background jobs
 {
-    pid_t pid;
-    char *command;
-    struct bg_job *next_job;
-    struct bg_job *prev_job;
+    pid_t pid; // PID of background job
+    char *command; // Command of background job
+    struct bg_job *next_job; // Next job
+    struct bg_job *prev_job; // Previous job
 } bg_job;
 
-char **parse_command(char *inp_command, int *inp_size)
+char **parse_command(char *inp_command, int *inp_size) // Splits input into array
 {
     char **parsed_input = malloc(strlen(inp_command)); // array of parsed input
     int input_index = 0;                               // array index
@@ -32,7 +32,7 @@ char **parse_command(char *inp_command, int *inp_size)
     return parsed_input;
 }
 
-int print_work_dir()
+int print_work_dir() // Prints workdir
 {
     char current_dir[100];
     if (getcwd(current_dir, sizeof(current_dir)) != NULL)
@@ -41,7 +41,7 @@ int print_work_dir()
     }
     else
     {
-        perror("Could not get working directory");
+        perror("Could not get working directory \n");
         return 1;
     }
     return 0;
@@ -59,52 +59,53 @@ int get_IO_index(char **inp_arr, int *inp_size)
     return -1;
 }
 
-void insert_bg_job(bg_job *current_job, pid_t pid, char *command)
+void insert_bg_job(bg_job **head, pid_t pid, char *command) // Insert new job as head
 {
-    bg_job *new_job = malloc(sizeof(struct bg_job));
+    bg_job *new_job = malloc(sizeof(struct bg_job)); // Allocate memory for new node
+    new_job->pid = pid; // Set PID of child
+    new_job->command = command; // Set the command
+   
+    new_job->next_job = (*head); // Set next as NULL or head
+    new_job->prev_job = NULL; // Set prev to NULL
 
-    new_job->pid = pid;
-    new_job->command = command;
-    new_job->next_job = NULL;
-
-    if (current_job == NULL)
+    if ((*head) != NULL) // If list is not empy, set the heads previous as new node
     {
-        new_job->prev_job = NULL;
+        (*head)->prev_job = new_job;
     }
-    else
-    {
-        current_job->next_job = new_job;
-        new_job->prev_job = current_job;
-    }
-
-    current_job = malloc(sizeof(struct bg_job));
-    memcpy(current_job, new_job, sizeof(struct bg_job));
-    free(new_job);
+    (*head) = new_job;
 }
 
-void delete_bg_job(bg_job *current_job, bg_job *delete_job)
+void delete_bg_job(bg_job **head, bg_job *delete_job) // Deletes job from linked list
 {
-    if (current_job == NULL || delete_job == NULL)
-    {
-        return;
-    }
+  if ((*head) == NULL || delete_job == NULL)
+  {
+      return; // Return if both are NULL
+  } 
 
-    if (delete_job == current_job) // if head == del, set head to previous
-    {
-        current_job = delete_job->prev_job;
-    }
+  if ((*head) == delete_job) // if the head is the node to be deleted
+  {
+      (*head) = delete_job->next_job;
+  }
 
-    if (delete_job->next_job != NULL) // if it is not first job
-    {
-        delete_job->next_job->prev_job = delete_job->prev_job;
-    }
+  if (delete_job->prev_job != NULL) //if the node is in the middle
+  {
+      delete_job->prev_job->next_job = delete_job->next_job;
+  }
 
-    if (delete_job->prev_job != NULL) // if it is not last job
-    {
-        delete_job->prev_job->next_job = delete_job->next_job;
-    }
+  free(delete_job);
+}
 
-    free(delete_job);
+void display_current_jobs(bg_job *head) // Displays all jobs
+{
+    bg_job *temp_job = head;
+
+    printf("Printing jobs... \n");
+    while (temp_job != NULL)
+    {
+        printf("[%d]: %s \n", temp_job->pid, temp_job->command);
+        temp_job = temp_job->next_job;
+    }
+    printf("\n");
 }
 
 int main(int argc, char *argv[])
@@ -117,26 +118,23 @@ int main(int argc, char *argv[])
     int inp_size = 0;
 
     int child_status;
-    bg_job *current_job = malloc(sizeof(struct bg_job));
+    bg_job *head = NULL;
 
     while (1)
     {
-        bg_job *temp_prev_job = current_job;
-        while (temp_prev_job->command != NULL)
+        bg_job *temp_next_job = head;
+        while (temp_next_job != NULL)
         {
             int ret_status;
-            int child_return = waitpid(temp_prev_job->pid, &ret_status, WNOHANG);
-            bg_job *temp = malloc(sizeof(struct bg_job));
-            temp = temp_prev_job->prev_job;
+            int child_return = waitpid(temp_next_job->pid, &ret_status, WNOHANG);
 
+            bg_job *temp = temp_next_job->next_job;
             if (WIFEXITED(ret_status))
             {
-                printf("Exit status [%s] = %d\n", temp_prev_job->command, ret_status);
-
-                delete_bg_job(current_job, temp_prev_job);
+                printf("Exit status [%s] = %d\n", temp_next_job->command, ret_status);
+                delete_bg_job(&head, temp_next_job);
             }
-            temp_prev_job = temp;
-            free(temp);
+            temp_next_job = temp;
         }
 
         print_work_dir();
@@ -149,7 +147,7 @@ int main(int argc, char *argv[])
             continue;
         }
 
-        if (strcmp(parsed_input[0], "cd") == 0)
+        if (strcmp(parsed_input[0], "cd") == 0) // Internal implementation of cd
         {
             char *path;
             if (parsed_input[1] == NULL)
@@ -168,18 +166,13 @@ int main(int argc, char *argv[])
             continue;
         }
 
-        if (!strcmp(parsed_input[0], "jobs"))
+        if (!strcmp(parsed_input[0], "jobs")) // List all bg jobs
         {
-            bg_job *temp = current_job;
-            while (temp->command != NULL)
-            {
-                printf("[%d]: %s", temp->pid, temp->command);
-                temp = temp_prev_job->prev_job;
-            }
+            display_current_jobs(head);
             continue;
         }
 
-        int IO_index = get_IO_index(parsed_input, &inp_size);
+        int IO_index = get_IO_index(parsed_input, &inp_size); // check for IO redirect
         if (IO_index >= 0)
         {
             printf("Found redirect\n");
@@ -187,8 +180,14 @@ int main(int argc, char *argv[])
 
         pid_t pid = fork();
 
+
         if (pid == 0)
         {
+            if (strchr(parsed_input[inp_size - 1], '&') != NULL)
+            {
+                parsed_input[inp_size - 1] = NULL;
+            }
+
             int ret_status = execvp(parsed_input[0], parsed_input);
             exit(ret_status);
         }
@@ -196,13 +195,13 @@ int main(int argc, char *argv[])
         {
             if (strchr(parsed_input[inp_size - 1], '&') != NULL)
             {
-                insert_bg_job(current_job, pid, parsed_input[-1]);
+                insert_bg_job(&head, pid, parsed_input[0]);
             }
             else
             {
                 int child_return = waitpid(pid, &child_status, 0);
                 printf("Exit status [%s] = %d\n", input_str, child_status);
-            }
+            } 
             free(parsed_input);
         }
         else
