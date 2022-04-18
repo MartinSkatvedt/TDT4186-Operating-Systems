@@ -16,19 +16,105 @@ typedef struct bg_job // Struct for background jobs
     struct bg_job *prev_job; // Previous job
 } bg_job;
 
+void pwd() // Prints working directory
+{
+    int pwd_buf_sz = 256;
+    char *current_dir;
+
+    current_dir = malloc(pwd_buf_sz * sizeof(char));
+
+    if (!current_dir)
+    {
+        perror("pwd");
+        exit(EXIT_FAILURE);
+    }
+
+    if (getcwd(current_dir, pwd_buf_sz * sizeof(char)) == NULL)
+    {
+        perror("Could not get working directory\n");
+        free(current_dir);
+        exit(EXIT_FAILURE);
+    }
+    printf("%s: ", current_dir);
+    free(current_dir);
+}
+
+char *read_input()
+{
+    char *input;
+    size_t buf_sz = 0;
+
+    if (getline(&input, &buf_sz, stdin) == -1)
+    {
+        if (feof(stdin))
+        {
+            exit(EXIT_SUCCESS);
+        }
+        else
+        {
+            perror("read input");
+            exit(EXIT_FAILURE);
+        }
+    }
+    return input;
+}
+
+char **parse_input(char *input) // Splits input into array
+{
+    int tkns_buf_sz = 64;
+    char *tkn;
+    char **tkns = malloc(tkns_buf_sz * sizeof(char *)); // array of strtok tokens
+    int i = 0;
+
+    if (!tkns)
+    {
+        perror("Parse command allocation failed\n");
+        exit(EXIT_FAILURE);
+    }
+
+    tkn = strtok(input, " ");
+    while (tkn != NULL)
+    {
+        tkns[i] = tkn;
+        i++;
+
+        // Check if we have space for more tokens
+        if (i >= tkns_buf_sz)
+        {
+            tkns_buf_sz += tkns_buf_sz;
+            tkns = realloc(tkns, tkns_buf_sz * sizeof(char *)); // Allocate more memory
+            if (!tkns)
+            {
+                // Allocation error
+                printf("Parse command reallocation failed\n");
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        tkn = strtok(NULL, " ");
+    }
+
+    tkns[i] = NULL; // Last index is NULL
+    return tkns;
+}
+
 int detect_input_redirect(char **args, char **input_file_name)
 {
     int i;
     for (i = 0; args[i] != NULL; i++)
     {
+        // Find the '<' symbol
         if (args[i][0] == '<')
         {
+            // '<' found...
             if (args[i + 1] == NULL)
             {
+                // but no file following
                 return -1;
             }
             *input_file_name = args[i + 1];
 
+            // Move the rest of the args appropriately
             while (args[i - 1] != NULL)
             {
                 args[i] = args[i + 2];
@@ -45,14 +131,18 @@ int detect_output_redirect(char **args, char **output_file_name)
     int i;
     for (i = 0; args[i] != NULL; i++)
     {
+        // Find the '>' symbol
         if (args[i][0] == '>')
         {
+            // '>' found...
             if (args[i + 1] == NULL)
             {
+                // but no file following
                 return -1;
             }
             *output_file_name = args[i + 1];
 
+            // Move the rest of the args appropriately
             while (args[i - 1] != NULL)
             {
                 args[i] = args[i + 2];
@@ -63,37 +153,11 @@ int detect_output_redirect(char **args, char **output_file_name)
     }
     return 0;
 }
-char **parse_command(char *inp_command, int *inp_size) // Splits input into array
+
+// Checks if command ends with &
+int detect_bg_job(char *input)
 {
-    char **parsed_input = malloc(strlen(inp_command)); // array of parsed input
-    int input_index = 0;                               // array index
-
-    char *pch = strtok(inp_command, " ");
-    while (pch != NULL)
-    {
-        parsed_input[input_index] = pch;
-        input_index++;
-        pch = strtok(NULL, " ");
-    }
-
-    parsed_input[input_index] = NULL; // Last index is NULL
-    *inp_size = input_index;
-    return parsed_input;
-}
-
-int print_work_dir() // Prints workdir
-{
-    char current_dir[100];
-    if (getcwd(current_dir, sizeof(current_dir)) != NULL)
-    {
-        printf("%s: ", current_dir);
-    }
-    else
-    {
-        perror("Could not get working directory \n");
-        return 1;
-    }
-    return 0;
+    return (input[strlen(input) - 2] == '&') ? 1 : 0;
 }
 
 void insert_bg_job(bg_job **head, pid_t pid, char *command) // Insert new job as head
@@ -151,17 +215,14 @@ int main(int argc, char *argv[])
 {
     printf("Welcome to flush \n");
 
-    size_t input_bytes;
-    size_t input_size = 2048;
-    char *input_str = (char *)malloc(input_size);
-    int inp_size = 0;
-    int is_bg_task = 0; // Bool if command ends with &
+    char *input;
+    char **parsed_input;
+
+    int is_bg_task; // Bool if command ends with &
 
     // For redirection
-    int redir_in = 0;
-    int redir_out = 0;
-    char *redir_in_file;
-    char *redir_out_file;
+    int redir_in, redir_out;
+    char *redir_in_file, *redir_out_file;
 
     int child_status;
     bg_job *head = NULL;
@@ -183,16 +244,19 @@ int main(int argc, char *argv[])
             temp_next_job = temp;
         }
 
-        print_work_dir();
-        input_bytes = getline(&input_str, &input_size, stdin);
+        pwd();
 
-        int inp_length = strlen(input_str);                      // Length of input
-        is_bg_task = (input_str[inp_length - 2] == '&') ? 1 : 0; // Checks if command ends with &
-        input_str[strcspn(input_str, "&\r\n")] = 0;              // Removed newline and &
+        input = read_input(); // Get user input
 
-        char **parsed_input = parse_command(input_str, &inp_size);
+        is_bg_task = detect_bg_job(input); // Check if command should be sent to background
+
+        input[strcspn(input, "&\r\n")] = 0; // Remove trailing characters
+
+        parsed_input = parse_input(input); // Parse input to args
+
         if (parsed_input[0] == NULL)
         {
+            // Empty command
             continue;
         }
 
@@ -221,12 +285,14 @@ int main(int argc, char *argv[])
             continue;
         }
 
+        // Detect input redirection
         if ((redir_in = detect_input_redirect(parsed_input, &redir_in_file)) == -1)
         {
             printf("Redirect: missing input file\n");
             continue;
         }
 
+        // Detect output redirection
         if ((redir_out = detect_output_redirect(parsed_input, &redir_out_file)) == -1)
         {
             printf("Redirect: missing output file\n");
@@ -236,29 +302,32 @@ int main(int argc, char *argv[])
         pid_t pid = fork();
         if (pid == 0)
         {
+            // Child
             if (redir_in)
             {
-                freopen(redir_in_file, "r", stdin);
+                freopen(redir_in_file, "r", stdin); // Redirect input to file instead of stdin
             }
 
             if (redir_out)
             {
-                freopen(redir_out_file, "w+", stdout);
+                freopen(redir_out_file, "w+", stdout); // Redirect output to file instead of stdout
             }
-            int ret_status = execvp(parsed_input[0], parsed_input);
-            exit(ret_status);
+            execvp(parsed_input[0], parsed_input); // Execute command
+            exit(EXIT_FAILURE);                    // Exec calls should never return, something went wrong
         }
         else if (pid > 0)
         {
+            // Parent
             if (is_bg_task)
             {
-                insert_bg_job(&head, pid, parsed_input[0]);
+                insert_bg_job(&head, pid, parsed_input[0]); // Send to background
             }
             else
             {
-                int child_return = waitpid(pid, &child_status, 0);
-                printf("Exit status [%s] = %d\n", input_str, child_status);
+                int child_return = waitpid(pid, &child_status, 0); // Wait for child to finish
+                printf("Exit status [%s] = %d\n", input, child_status);
             }
+            free(input);
             free(parsed_input);
         }
         else
