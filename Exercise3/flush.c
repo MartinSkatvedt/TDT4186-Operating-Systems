@@ -52,7 +52,7 @@ char **parse_input(char *input) // Splits input into array
         exit(EXIT_FAILURE);
     }
 
-    tkn = strtok(input, " ");
+    tkn = strtok(input, " \t");
     while (tkn != NULL)
     {
         tkns[i] = tkn;
@@ -71,7 +71,7 @@ char **parse_input(char *input) // Splits input into array
             }
         }
 
-        tkn = strtok(NULL, " ");
+        tkn = strtok(NULL, " \t");
     }
 
     tkns[i] = NULL; // Last index is NULL
