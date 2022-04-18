@@ -39,26 +39,6 @@ void pwd() // Prints working directory
     free(current_dir);
 }
 
-char *read_input()
-{
-    char *input;
-    size_t buf_sz = 0;
-
-    if (getline(&input, &buf_sz, stdin) == -1)
-    {
-        if (feof(stdin))
-        {
-            exit(EXIT_SUCCESS);
-        }
-        else
-        {
-            perror("read input");
-            exit(EXIT_FAILURE);
-        }
-    }
-    return input;
-}
-
 char **parse_input(char *input) // Splits input into array
 {
     int tkns_buf_sz = 64;
@@ -154,8 +134,7 @@ int detect_output_redirect(char **args, char **output_file_name)
     return 0;
 }
 
-// Checks if command ends with &
-int detect_bg_job(char *input)
+int detect_bg_job(char *input) // Checks if command ends with &
 {
     return (input[strlen(input) - 2] == '&') ? 1 : 0;
 }
@@ -164,7 +143,9 @@ void insert_bg_job(bg_job **head, pid_t pid, char *command) // Insert new job as
 {
     bg_job *new_job = malloc(sizeof(struct bg_job)); // Allocate memory for new node
     new_job->pid = pid;                              // Set PID of child
-    new_job->command = command;                      // Set the command
+
+    new_job->command = malloc(sizeof(command));
+    strcpy(new_job->command, command); // Set the command
 
     new_job->next_job = (*head); // Set next as NULL or head
     new_job->prev_job = NULL;    // Set prev to NULL
@@ -192,23 +173,47 @@ void delete_bg_job(bg_job **head, bg_job *delete_job) // Deletes job from linked
     {
         delete_job->prev_job->next_job = delete_job->next_job;
     }
-
+    free(delete_job->command);
     free(delete_job);
+}
+
+void kill_bg_job(bg_job **head, bg_job *delete_job) // Kill process on exit program
+{
+    kill(delete_job->pid, SIGKILL);
+    delete_bg_job(head, delete_job);
 }
 
 void display_current_jobs(bg_job *head) // Displays all jobs
 {
-    printf("Printing jobs... \n");
     while (head != NULL)
     {
         printf("[%d]: %s \n", head->pid, head->command);
         head = head->next_job;
     }
+}
 
-    if (head == NULL)
+char *read_input(bg_job **head)
+{
+    char *input;
+    size_t buf_sz = 0;
+
+    if (getline(&input, &buf_sz, stdin) == -1)
     {
-        printf("NULL \n");
+        if (feof(stdin))
+        {
+            while (*head != NULL) // Deletes all bg jobs if ctrl + d is pressed
+            {
+                kill_bg_job(head, *head);
+            }
+            exit(EXIT_SUCCESS);
+        }
+        else
+        {
+            perror("read input");
+            exit(EXIT_FAILURE);
+        }
     }
+    return input;
 }
 
 int main(int argc, char *argv[])
@@ -236,7 +241,7 @@ int main(int argc, char *argv[])
             int child_return = waitpid(temp_next_job->pid, &ret_status, WNOHANG);
 
             bg_job *temp = temp_next_job->next_job;
-            if (WIFEXITED(ret_status))
+            if (child_return > 0)
             {
                 printf("Exit status [%s] = %d\n", temp_next_job->command, ret_status);
                 delete_bg_job(&head, temp_next_job);
@@ -246,7 +251,7 @@ int main(int argc, char *argv[])
 
         pwd();
 
-        input = read_input(); // Get user input
+        input = read_input(&head); // Get user input
 
         is_bg_task = detect_bg_job(input); // Check if command should be sent to background
 
